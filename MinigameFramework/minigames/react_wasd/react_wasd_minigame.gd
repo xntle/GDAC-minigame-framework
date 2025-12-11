@@ -6,23 +6,29 @@ var input_progress: String = ""
 var base_pattern_length: int = 4
 var pattern_length: int = base_pattern_length
 
+# Timing variables
+var start_time: float = 0.0
+var completion_time: float = 0.0
+var best_time: float = 999.0 
+const SAVE_PATH = "user://react_wasd_best_time.save"
+
 # UI references
 @onready var key_container: HBoxContainer = $KeyContainer
 @onready var feedback_label: Label = $FeedbackLabel
+@onready var time_label: Label = $TimeLabel
 
 # Valid keys for pattern generation
 const VALID_KEYS = ["W", "A", "S", "D"]
-
-# Key textures (1.png=W, 2.png=A, 3.png=S, 4.png=D)
 var key_textures = {}
 
 
 func _ready():
-	# Load the key images BEFORE calling super() (which calls start())
+	# Load the key 
 	key_textures["W"] = load("res://minigames/react_wasd/1.png")
 	key_textures["A"] = load("res://minigames/react_wasd/2.png")
 	key_textures["S"] = load("res://minigames/react_wasd/3.png")
 	key_textures["D"] = load("res://minigames/react_wasd/4.png")
+	load_best_time()
 	super()
 
 
@@ -31,18 +37,16 @@ func start():
 	current_pattern = ""
 	input_progress = ""
 	pattern_length = base_pattern_length
+	start_time = Time.get_ticks_msec() / 1000.0
 
 	# Adjust for difficulty
-	# Increase pattern length and reduce time as difficulty increases
 	pattern_length = base_pattern_length + roundi(difficulty * 1.5)
 	countdown_time = max(3.0, 7.0 / difficulty)
 
-	# Generate random pattern
 	generate_pattern()
-
-	# Update UI
 	update_display()
 	feedback_label.text = ""
+	time_label.text = ""
 
 
 func generate_pattern():
@@ -72,11 +76,25 @@ func process_input(key: String):
 		# Correct input
 		input_progress += key
 		update_display()
-
-		# Check if pattern is complete
 		if input_progress.length() == current_pattern.length():
-			feedback_label.text = "Perfect!"
-			feedback_label.modulate = Color(0.3, 1, 0.3)
+			# Calculate completion time
+			completion_time = (Time.get_ticks_msec() / 1000.0) - start_time
+
+			# Display time and check for new record
+			var time_text = "Time: %.2fs" % completion_time
+			if completion_time < best_time:
+				best_time = completion_time
+				save_best_time()
+				feedback_label.text = "NEW RECORD! " + time_text
+				feedback_label.modulate = Color(1, 0.84, 0) 
+			else:
+				feedback_label.text = "Perfect! " + time_text
+				feedback_label.modulate = Color(0.3, 1, 0.3)
+
+			# Show best time
+			time_label.text = "Best: %.2fs" % best_time
+			time_label.modulate = Color(1, 1, 1)
+
 			win()
 	else:
 		# Wrong input
@@ -84,8 +102,6 @@ func process_input(key: String):
 		feedback_label.modulate = Color(1, 0.3, 0.3)
 		input_progress = ""
 		update_display()
-
-		# Flash the wrong input briefly
 		await get_tree().create_timer(0.5).timeout
 		if not has_ended:
 			feedback_label.text = ""
@@ -106,11 +122,9 @@ func update_display():
 		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 
 		if i < input_progress.length():
-			# Typed - bright/colored
-			texture_rect.modulate = Color(0.5, 1, 0.5)  # Bright green for typed
+			texture_rect.modulate = Color(0.5, 1, 0.5)  
 		else:
-			# Untyped - very dark/black
-			texture_rect.modulate = Color(0.15, 0.15, 0.15)  # Very dark for untyped
+			texture_rect.modulate = Color(0.15, 0.15, 0.15)  
 
 		key_container.add_child(texture_rect)
 
@@ -123,3 +137,18 @@ func lose():
 	super()
 	feedback_label.text = "Time's up!"
 	feedback_label.modulate = Color(1, 0.5, 0.3)
+
+
+func load_best_time():
+	if FileAccess.file_exists(SAVE_PATH):
+		var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+		if file:
+			best_time = file.get_float()
+			file.close()
+
+
+func save_best_time():
+	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file:
+		file.store_float(best_time)
+		file.close()
